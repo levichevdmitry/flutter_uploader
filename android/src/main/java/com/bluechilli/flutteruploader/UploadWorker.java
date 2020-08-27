@@ -214,7 +214,8 @@ public class UploadWorker extends ListenableWorker implements CountProgressListe
                 null));
       }
 
-      requestBuilder.addHeader("Accept", "application/json; charset=utf-8");
+      //requestBuilder.addHeader("Accept", "application/json; charset=utf-8");
+      requestBuilder.addHeader("Accept", "application/json, charset=utf-8");
 
       Request request;
 
