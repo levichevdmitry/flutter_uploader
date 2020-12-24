@@ -1,3 +1,5 @@
+// ignore_for_file: public_member_api_docs
+
 import 'dart:async';
 import 'dart:io';
 
@@ -87,15 +89,15 @@ class _UploadScreenState extends State<UploadScreen> {
                   children: <Widget>[
                     RaisedButton(
                       onPressed: () => getImage(binary: false),
-                      child: Text("upload image"),
+                      child: Text('upload image'),
                     ),
                     RaisedButton(
                       onPressed: () => getVideo(binary: false),
-                      child: Text("upload video"),
+                      child: Text('upload video'),
                     ),
                     RaisedButton(
                       onPressed: () => getMultiple(binary: false),
-                      child: Text("upload multi"),
+                      child: Text('upload multi'),
                     ),
                   ],
                 ),
@@ -111,15 +113,15 @@ class _UploadScreenState extends State<UploadScreen> {
                   children: <Widget>[
                     RaisedButton(
                       onPressed: () => getImage(binary: true),
-                      child: Text("upload image"),
+                      child: Text('upload image'),
                     ),
                     RaisedButton(
                       onPressed: () => getVideo(binary: true),
-                      child: Text("upload video"),
+                      child: Text('upload video'),
                     ),
                     RaisedButton(
                       onPressed: () => getMultiple(binary: true),
-                      child: Text("upload multi"),
+                      child: Text('upload multi'),
                     ),
                   ],
                 ),
@@ -137,7 +139,7 @@ class _UploadScreenState extends State<UploadScreen> {
                       onPressed: () {
                         widget.uploader.clearUploads();
                       },
-                      child: Text("Clear Uploads"),
+                      child: Text('Clear Uploads'),
                     )
                   ],
                 ),
@@ -178,7 +180,7 @@ class _UploadScreenState extends State<UploadScreen> {
     final files = await FilePicker.getMultiFilePath(allowCompression: false);
     if (files?.isNotEmpty == true) {
       if (binary) {
-        for (String path in files.values) {
+        for (var path in files.values) {
           _handleFileUpload([path]);
         }
       } else {
@@ -191,9 +193,15 @@ class _UploadScreenState extends State<UploadScreen> {
     final prefs = await SharedPreferences.getInstance();
     final binary = prefs.getBool('binary') ?? false;
 
-    final tag = "upload";
+    await widget.uploader.enqueue(_buildUpload(binary, paths));
 
-    Uri url = binary
+    widget.onUploadStarted();
+  }
+
+  Upload _buildUpload(bool binary, List<String> paths) {
+    final tag = 'upload';
+
+    var url = binary
         ? widget.uploadURL.replace(path: widget.uploadURL.path + 'Binary')
         : widget.uploadURL;
 
@@ -201,23 +209,21 @@ class _UploadScreenState extends State<UploadScreen> {
       'simulate': _serverBehavior.name,
     });
 
-    print('URL: $url');
-
-    binary
-        ? await widget.uploader.enqueueBinary(
-            url: url.toString(),
-            path: paths.first,
-            method: UploadMethod.POST,
-            tag: tag,
-          )
-        : await widget.uploader.enqueue(
-            url: url.toString(),
-            data: {"name": "john"},
-            files: paths.map((e) => FileItem(path: e, field: 'file')).toList(),
-            method: UploadMethod.POST,
-            tag: tag,
-          );
-
-    widget.onUploadStarted();
+    if (binary) {
+      return RawUpload(
+        url: url.toString(),
+        path: paths.first,
+        method: UploadMethod.POST,
+        tag: tag,
+      );
+    } else {
+      return MultipartFormDataUpload(
+        url: url.toString(),
+        data: {'name': 'john'},
+        files: paths.map((e) => FileItem(path: e, field: 'file')).toList(),
+        method: UploadMethod.POST,
+        tag: tag,
+      );
+    }
   }
 }

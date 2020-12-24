@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/services.dart';
@@ -12,11 +13,14 @@ void main() {
 
   FlutterUploader uploader;
 
-  const MethodChannel methodChannel = MethodChannel('flutter_uploader');
+  final methodChannel = MethodChannel('flutter_uploader');
   EventChannel progressChannel;
   EventChannel resultChannel;
 
-  final List<MethodCall> log = <MethodCall>[];
+  StreamController<Map<String, dynamic>> progressController;
+  StreamController<Map<String, dynamic>> resultController;
+
+  final log = <MethodCall>[];
 
   setUp(() {
     methodChannel.setMockMethodCallHandler((call) async {
@@ -27,10 +31,23 @@ void main() {
     progressChannel = MockEventChannel();
     resultChannel = MockEventChannel();
 
+    progressController = StreamController();
+    resultController = StreamController();
+
+    when(progressChannel.receiveBroadcastStream())
+        .thenAnswer((_) => progressController.stream.asBroadcastStream());
+    when(resultChannel.receiveBroadcastStream())
+        .thenAnswer((_) => resultController.stream.asBroadcastStream());
+
     uploader =
         FlutterUploader.private(methodChannel, progressChannel, resultChannel);
 
     log.clear();
+  });
+
+  tearDown(() {
+    progressController.close();
+    resultController.close();
   });
 
   group('FlutterUploader', () {
@@ -51,15 +68,17 @@ void main() {
     group('enqueue', () {
       test('passes the arguments correctly', () async {
         await uploader.enqueue(
-          url: 'http://www.somewhere.com',
-          files: [
-            FileItem(path: '/path/to/file1'),
-            FileItem(path: '/path/to/file2', field: 'field2'),
-          ],
-          method: UploadMethod.PATCH,
-          headers: {'header1': 'value1'},
-          data: {'data1': 'value1'},
-          tag: 'tag1',
+          MultipartFormDataUpload(
+            url: 'http://www.somewhere.com',
+            files: [
+              FileItem(path: '/path/to/file1'),
+              FileItem(path: '/path/to/file2', field: 'field2'),
+            ],
+            method: UploadMethod.PATCH,
+            headers: {'header1': 'value1'},
+            data: {'data1': 'value1'},
+            tag: 'tag1',
+          ),
         );
 
         expect(log, <Matcher>[
@@ -90,12 +109,14 @@ void main() {
 
     group('enqueueBinary', () {
       test('passes the arguments correctly', () async {
-        await uploader.enqueueBinary(
-          url: 'http://www.somewhere.com',
-          path: '/path/to/file1',
-          method: UploadMethod.PATCH,
-          headers: {'header1': 'value1'},
-          tag: 'tag1',
+        await uploader.enqueue(
+          RawUpload(
+            url: 'http://www.somewhere.com',
+            path: '/path/to/file1',
+            method: UploadMethod.PATCH,
+            headers: {'header1': 'value1'},
+            tag: 'tag1',
+          ),
         );
 
         expect(log, <Matcher>[
@@ -141,6 +162,50 @@ void main() {
           isMethodCall('clearUploads', arguments: null),
         ]);
       });
+    });
+    group('progress stream', () {
+      testWidgets('supports multiple subscriptions',
+          (WidgetTester tester) async {
+        const fakeTaskId = '123123';
+
+        final c1 = Completer<String>();
+        final c2 = Completer<String>();
+
+        uploader.progress.take(1).listen((event) => c1.complete(event.taskId));
+        uploader.progress.take(1).listen((event) => c2.complete(event.taskId));
+
+        progressController.add({
+          'taskId': fakeTaskId,
+          'message': '123',
+          'status': 200,
+          'statusCode': 120,
+        });
+
+        expect(await c1.future, fakeTaskId);
+        expect(await c2.future, fakeTaskId);
+      });
+    });
+  });
+
+  group('result stream', () {
+    testWidgets('supports multiple subscriptions', (WidgetTester tester) async {
+      const fakeTaskId = '123123';
+
+      final c1 = Completer<String>();
+      final c2 = Completer<String>();
+
+      uploader.result.take(1).listen((event) => c1.complete(event.taskId));
+      uploader.result.take(1).listen((event) => c2.complete(event.taskId));
+
+      resultController.add({
+        'taskId': fakeTaskId,
+        'message': '123',
+        'status': 200,
+        'statusCode': 120,
+      });
+
+      expect(await c1.future, fakeTaskId);
+      expect(await c2.future, fakeTaskId);
     });
   });
 }

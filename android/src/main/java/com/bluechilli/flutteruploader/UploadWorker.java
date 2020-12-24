@@ -195,11 +195,13 @@ public class UploadWorker extends ListenableWorker implements CountProgressListe
       RequestBody requestBody = new CountingRequestBody(innerRequestBody, getId().toString(), this);
       Request.Builder requestBuilder = new Request.Builder();
 
+      requestBuilder.addHeader("Accept", "*/*");
+
       if (headers != null) {
         for (String key : headers.keySet()) {
           String header = headers.get(key);
           if (header != null && !header.isEmpty()) {
-            requestBuilder = requestBuilder.addHeader(key, header);
+            requestBuilder = requestBuilder.header(key, header);
           }
         }
       }
@@ -213,9 +215,6 @@ public class UploadWorker extends ListenableWorker implements CountProgressListe
                 "url is not a valid url",
                 null));
       }
-
-      //requestBuilder.addHeader("Accept", "application/json; charset=utf-8");
-      requestBuilder.addHeader("Accept", "application/json, charset=utf-8");
 
       Request request;
 
@@ -401,7 +400,11 @@ public class UploadWorker extends ListenableWorker implements CountProgressListe
     String extension = MimeTypeMap.getFileExtensionFromUrl(url);
     try {
       if (extension != null && !extension.isEmpty()) {
-        type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase());
+        String mimeType =
+            MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase());
+        if (mimeType != null && !mimeType.isEmpty()) {
+          type = mimeType;
+        }
       }
     } catch (Exception ex) {
       Log.d(TAG, "UploadWorker - GetMimeType", ex);

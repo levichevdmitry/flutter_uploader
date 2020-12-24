@@ -16,17 +16,19 @@ void main() {
   E2EWidgetsFlutterBinding.ensureInitialized();
 
   FlutterUploader uploader;
-  List<String> tempFilePaths = [];
+  var tempFilePaths = <String>[];
 
   setUp(() {
     uploader = FlutterUploader();
   });
 
   tearDownAll(() {
-    for (String path in tempFilePaths) {
+    for (var path in tempFilePaths) {
       try {
         File(path).deleteSync();
-      } catch (e) {}
+      } catch (e) {
+        // ignored
+      }
     }
     tempFilePaths.clear();
   });
@@ -45,46 +47,67 @@ void main() {
   group('multipart/form-data uploads', () {
     final url = baseUrl;
 
-    testWidgets("single file", (WidgetTester tester) async {
-      var fileItem = FileItem(path: await _tmpFile(), field: "file");
-
-      final taskId =
-          await uploader.enqueue(url: url.toString(), files: [fileItem]);
-
-      expect(taskId, isNotNull);
-
-      final res = await uploader.result.firstWhere(isCompleted(taskId));
-      final json = jsonDecode(res.response);
-
-      expect(json['message'], 'Successfully uploaded');
-      expect(res.statusCode, 200);
-      expect(res.status, UploadTaskStatus.complete);
-    });
-
-    testWidgets("multiple files", (WidgetTester tester) async {
-      final taskId = await uploader.enqueue(url: url.toString(), files: [
-        FileItem(path: await _tmpFile(256), field: "file1"),
-        FileItem(path: await _tmpFile(257), field: "file2"),
-      ]);
-
-      expect(taskId, isNotNull);
-
-      final res = await uploader.result.firstWhere(isCompleted(taskId));
-      final json = jsonDecode(res.response);
-
-      expect(json['message'], 'Successfully uploaded');
-      expect(res.statusCode, 200);
-      expect(res.status, UploadTaskStatus.complete);
-    });
-
-    testWidgets("handles 201 empty body", (WidgetTester tester) async {
-      var fileItem = FileItem(path: await _tmpFile(), field: "file");
+    testWidgets('single file', (WidgetTester tester) async {
+      var fileItem = FileItem(path: await _tmpFile(), field: 'file');
 
       final taskId = await uploader.enqueue(
-        url: url.replace(queryParameters: {
-          'simulate': 'ok201',
-        }).toString(),
+        MultipartFormDataUpload(url: url.toString(), files: [fileItem]),
+      );
+
+      expect(taskId, isNotNull);
+
+      final res = await uploader.result.firstWhere(isCompleted(taskId));
+      final json = jsonDecode(res.response);
+
+      expect(json['message'], 'Successfully uploaded');
+      expect(res.statusCode, 200);
+      expect(json['request']['headers']['accept'], '*/*');
+      expect(res.status, UploadTaskStatus.complete);
+    });
+
+    testWidgets("can overwrite 'Accept' header", (WidgetTester tester) async {
+      var fileItem = FileItem(path: await _tmpFile(), field: 'file');
+
+      final taskId = await uploader.enqueue(MultipartFormDataUpload(
+        url: url.toString(),
         files: [fileItem],
+        headers: {'Accept': 'application/json, charset=utf-8'},
+      ));
+      final res = await uploader.result.firstWhere(isCompleted(taskId));
+      final json = jsonDecode(res.response);
+
+      expect(json['request']['headers']['accept'],
+          'application/json, charset=utf-8');
+    });
+
+    testWidgets('multiple files', (WidgetTester tester) async {
+      final taskId = await uploader.enqueue(
+        MultipartFormDataUpload(url: url.toString(), files: [
+          FileItem(path: await _tmpFile(256), field: 'file1'),
+          FileItem(path: await _tmpFile(257), field: 'file2'),
+        ]),
+      );
+
+      expect(taskId, isNotNull);
+
+      final res = await uploader.result.firstWhere(isCompleted(taskId));
+      final json = jsonDecode(res.response);
+
+      expect(json['message'], 'Successfully uploaded');
+      expect(res.statusCode, 200);
+      expect(res.status, UploadTaskStatus.complete);
+    });
+
+    testWidgets('handles 201 empty body', (WidgetTester tester) async {
+      var fileItem = FileItem(path: await _tmpFile(), field: 'file');
+
+      final taskId = await uploader.enqueue(
+        MultipartFormDataUpload(
+          url: url.replace(queryParameters: {
+            'simulate': 'ok201',
+          }).toString(),
+          files: [fileItem],
+        ),
       );
 
       expect(taskId, isNotNull);
@@ -96,12 +119,15 @@ void main() {
       expect(res.status, UploadTaskStatus.complete);
     });
 
-    testWidgets("forwards errors", (WidgetTester tester) async {
-      var fileItem = FileItem(path: await _tmpFile(), field: "file");
+    testWidgets('forwards errors', (WidgetTester tester) async {
+      var fileItem = FileItem(path: await _tmpFile(), field: 'file');
 
       final taskId = await uploader.enqueue(
-        url: url.replace(queryParameters: {'simulate': 'error500'}).toString(),
-        files: [fileItem],
+        MultipartFormDataUpload(
+          url:
+              url.replace(queryParameters: {'simulate': 'error500'}).toString(),
+          files: [fileItem],
+        ),
       );
 
       expect(taskId, isNotNull);
@@ -115,10 +141,12 @@ void main() {
   group('binary uploads', () {
     final url = baseUrl.replace(path: baseUrl.path + 'Binary');
 
-    testWidgets("single file", (WidgetTester tester) async {
-      final taskId = await uploader.enqueueBinary(
-        url: url.toString(),
-        path: await _tmpFile(),
+    testWidgets('single file', (WidgetTester tester) async {
+      final taskId = await uploader.enqueue(
+        RawUpload(
+          url: url.toString(),
+          path: await _tmpFile(),
+        ),
       );
 
       expect(taskId, isNotNull);
@@ -129,13 +157,28 @@ void main() {
 
       expect(json['message'], 'Successfully uploaded');
       expect(res.statusCode, 200);
+      expect(json['headers']['accept'], '*/*');
       expect(res.status, UploadTaskStatus.complete);
     });
 
-    testWidgets("fowards errors", (WidgetTester tester) async {
-      final taskId = await uploader.enqueueBinary(
-        url: url.replace(queryParameters: {'simulate': 'error500'}).toString(),
+    testWidgets("can overwrite 'Accept' header", (WidgetTester tester) async {
+      final taskId = await uploader.enqueue(RawUpload(
+        url: url.toString(),
         path: await _tmpFile(),
+        headers: {'Accept': 'application/json, charset=utf-8'},
+      ));
+      final res = await uploader.result.firstWhere(isCompleted(taskId));
+      final json = jsonDecode(res.response);
+
+      expect(json['headers']['accept'], 'application/json, charset=utf-8');
+    });
+    testWidgets('fowards errors', (WidgetTester tester) async {
+      final taskId = await uploader.enqueue(
+        RawUpload(
+          url:
+              url.replace(queryParameters: {'simulate': 'error500'}).toString(),
+          path: await _tmpFile(),
+        ),
       );
 
       expect(taskId, isNotNull);
